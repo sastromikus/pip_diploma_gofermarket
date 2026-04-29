@@ -1,15 +1,19 @@
 package main
 
 import (
-	"fmt"
+	"log"
+	"net/http"
 
 	"github.com/sastromikus/pip_diploma_gofermarket/internal/config"
+	"github.com/sastromikus/pip_diploma_gofermarket/internal/handler"
 )
 
 func main() {
 	cfg := config.Load()
 
-	fmt.Println("run address:", cfg.RunAddress)
-	fmt.Println("database uri:", cfg.DatabaseURI)
-	fmt.Println("accrual address:", cfg.AccrualSystemAddress)
+	log.Printf("starting server on %s", cfg.RunAddress)
+
+	if err := http.ListenAndServe(cfg.RunAddress, handler.NewRouter()); err != nil {
+		log.Fatal(err)
+	}
 }
