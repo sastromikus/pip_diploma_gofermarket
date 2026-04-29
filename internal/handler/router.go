@@ -6,18 +6,18 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-func NewRouter() http.Handler {
+func NewRouter(h *Handler) http.Handler {
 	r := chi.NewRouter()
 
-	r.Post("/api/user/register", Register)
-	r.Post("/api/user/login", Login)
+	r.Post("/api/user/register", h.Register)
+	r.Post("/api/user/login", h.Login)
 
-	r.Post("/api/user/orders", UploadOrder)
-	r.Get("/api/user/orders", GetOrders)
+	r.Post("/api/user/orders", h.UploadOrder)
+	r.Get("/api/user/orders", h.GetOrders)
 
-	r.Get("/api/user/balance", GetBalance)
-	r.Post("/api/user/balance/withdraw", Withdraw)
-	r.Get("/api/user/withdrawals", GetWithdrawals)
+	r.Get("/api/user/balance", h.GetBalance)
+	r.Post("/api/user/balance/withdraw", h.Withdraw)
+	r.Get("/api/user/withdrawals", h.GetWithdrawals)
 
 	return r
 }
