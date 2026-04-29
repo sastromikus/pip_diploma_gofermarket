@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
-	""
+	"log"
 
 	"github.com/sastromikus/pip_diploma_gofermarket/internal/model"
 	"github.com/sastromikus/pip_diploma_gofermarket/internal/service"
