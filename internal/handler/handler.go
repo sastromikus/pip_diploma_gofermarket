@@ -12,6 +12,7 @@ import (
 
 type AuthService interface {
 	Register(login string, password string) (model.User, error)
+	Login(login string, password string) (model.User, error)
 }
 
 type Handler struct {
@@ -52,7 +53,27 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
-	w.WriteHeader(http.StatusNotImplemented)
+	var req model.AuthRequest
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	_, err := h.auth.Login(req.Login, req.Password)
+	if err != nil {
+		switch {
+		case errors.Is(err, service.ErrInvalidAuthData):
+			w.WriteHeader(http.StatusBadRequest)
+		case errors.Is(err, service.ErrInvalidLogin):
+			w.WriteHeader(http.StatusUnauthorized)
+		default:
+			w.WriteHeader(http.StatusInternalServerError)
+		}
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
 }
 
 func (h *Handler) UploadOrder(w http.ResponseWriter, r *http.Request) {

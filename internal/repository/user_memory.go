@@ -40,3 +40,15 @@ func (r *MemoryUserRepository) CreateUser(login string, passwordHash string) (mo
 
 	return user, nil
 }
+
+func (r *MemoryUserRepository) GetUserByLogin(login string) (model.User, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	user, ok := r.users[login]
+	if !ok {
+		return model.User{}, service.ErrInvalidLogin
+	}
+
+	return user, nil
+}
