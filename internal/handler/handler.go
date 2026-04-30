@@ -86,7 +86,15 @@ func (h *Handler) UploadOrder(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) GetOrders(w http.ResponseWriter, r *http.Request) {
-	w.WriteHeader(http.StatusNotImplemented)
+	userID, err := userIDFromContext(r.Context())
+	if err != nil {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/plain")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte(strconv.FormatInt(userID, 10)))
 }
 
 func (h *Handler) GetBalance(w http.ResponseWriter, r *http.Request) {
