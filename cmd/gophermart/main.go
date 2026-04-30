@@ -13,7 +13,17 @@ import (
 func main() {
 	cfg := config.Load()
 
-	userRepo := repository.NewMemoryUserRepository()
+	if cfg.DatabaseURI == "" {
+		log.Fatal("DATABASE_URI is empty")
+	}
+
+	db, err := repository.NewPostgresDB(cfg.DatabaseURI)
+	if err != nil {
+		log.Fatalf("database connection failed: %v", err)
+	}
+	defer db.Close()
+
+	userRepo := repository.NewPostgresUserRepository(db)
 	authService := service.NewAuthService(userRepo)
 	h := handler.NewHandler(authService)
 
