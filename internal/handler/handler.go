@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"log"
+	"strconv"
 
 	"github.com/sastromikus/pip_diploma_gofermarket/internal/model"
 	"github.com/sastromikus/pip_diploma_gofermarket/internal/service"
@@ -18,6 +19,8 @@ type AuthService interface {
 type Handler struct {
 	auth AuthService
 }
+
+const authCookieName = "user_id"
 
 func NewHandler(auth AuthService) *Handler {
 	return &Handler{
@@ -34,7 +37,7 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, err := h.auth.Register(req.Login, req.Password)
+	user, err := h.auth.Register(req.Login, req.Password)
 	if err != nil {
 		log.Printf("register error: %v", err)
 
@@ -49,6 +52,7 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	setAuthCookie(w, user.ID)
 	w.WriteHeader(http.StatusOK)
 }
 
@@ -60,7 +64,7 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, err := h.auth.Login(req.Login, req.Password)
+	user, err := h.auth.Login(req.Login, req.Password)
 	if err != nil {
 		switch {
 		case errors.Is(err, service.ErrInvalidAuthData):
@@ -73,6 +77,7 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	setAuthCookie(w, user.ID)
 	w.WriteHeader(http.StatusOK)
 }
 
@@ -94,4 +99,13 @@ func (h *Handler) Withdraw(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) GetWithdrawals(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
+}
+
+func setAuthCookie(w http.ResponseWriter, userID int64) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     authCookieName,
+		Value:    strconv.FormatInt(userID, 10),
+		Path:     "/",
+		HttpOnly: true,
+	})
 }
