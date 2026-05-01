@@ -15,6 +15,7 @@ var (
 
 type OrderRepository interface {
 	CreateOrder(userID int64, number string) (model.Order, error)
+	GetOrdersByUserID(userID int64) ([]model.Order, error)
 }
 
 type OrderService struct {
@@ -33,4 +34,8 @@ func (s *OrderService) UploadOrder(userID int64, number string) (model.Order, er
 	}
 
 	return s.orders.CreateOrder(userID, number)
+}
+
+func (s *OrderService) GetOrders(userID int64) ([]model.Order, error) {
+	return s.orders.GetOrdersByUserID(userID)
 }

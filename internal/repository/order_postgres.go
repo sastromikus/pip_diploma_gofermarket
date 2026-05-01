@@ -95,3 +95,44 @@ func (r *PostgresOrderRepository) GetOrderByNumber(number string) (model.Order, 
 
 	return order, nil
 }
+
+func (r *PostgresOrderRepository) GetOrdersByUserID(userID int64) ([]model.Order, error) {
+	query := `
+		SELECT id, user_id, number, status, accrual, uploaded_at
+		FROM orders
+		WHERE user_id = $1
+		ORDER BY uploaded_at DESC
+	`
+
+	rows, err := r.db.QueryContext(context.Background(), query, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	orders := make([]model.Order, 0)
+
+	for rows.Next() {
+		var order model.Order
+
+		err := rows.Scan(
+			&order.ID,
+			&order.UserID,
+			&order.Number,
+			&order.Status,
+			&order.Accrual,
+			&order.UploadedAt,
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		orders = append(orders, order)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return orders, nil
+}

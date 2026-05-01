@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/sastromikus/pip_diploma_gofermarket/internal/model"
 	"github.com/sastromikus/pip_diploma_gofermarket/internal/service"
@@ -25,6 +26,7 @@ type Handler struct {
 
 type OrderService interface {
 	UploadOrder(userID int64, number string) (model.Order, error)
+	GetOrders(userID int64) ([]model.Order, error)
 }
 
 const authCookieName = "user_id"
@@ -133,9 +135,33 @@ func (h *Handler) GetOrders(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "text/plain")
+	orders, err := h.orders.GetOrders(userID)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	if len(orders) == 0 {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
+	response := make([]model.OrderResponse, 0, len(orders))
+	for _, order := range orders {
+		response = append(response, model.OrderResponse{
+			Number:     order.Number,
+			Status:     order.Status,
+			Accrual:    order.Accrual,
+			UploadedAt: order.UploadedAt.Format(time.RFC3339),
+		})
+	}
+
+	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write([]byte(strconv.FormatInt(userID, 10)))
+
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		return
+	}
 }
 
 func (h *Handler) GetBalance(w http.ResponseWriter, r *http.Request) {

@@ -46,3 +46,18 @@ func (r *MemoryOrderRepository) CreateOrder(userID int64, number string) (model.
 
 	return order, nil
 }
+
+func (r *MemoryOrderRepository) GetOrdersByUserID(userID int64) ([]model.Order, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	orders := make([]model.Order, 0)
+
+	for _, order := range r.orders {
+		if order.UserID == userID {
+			orders = append(orders, order)
+		}
+	}
+
+	return orders, nil
+}
