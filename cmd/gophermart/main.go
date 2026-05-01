@@ -29,7 +29,7 @@ func main() {
 
 	userRepo := repository.NewPostgresUserRepository(db)
 	authService := service.NewAuthService(userRepo)
-	orderRepo := repository.NewMemoryOrderRepository()
+	orderRepo := repository.NewPostgresOrderRepository(db)
 	orderService := service.NewOrderService(orderRepo)
 
 	h := handler.NewHandler(authService, orderService)

@@ -3,10 +3,10 @@ package handler
 import (
 	"encoding/json"
 	"errors"
-	"net/http"
-	"log"
-	"strconv"
 	"io"
+	"log"
+	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/sastromikus/pip_diploma_gofermarket/internal/model"

@@ -9,9 +9,9 @@ import (
 )
 
 type MemoryOrderRepository struct {
-	mu      sync.Mutex
-	nextID  int64
-	orders  map[string]model.Order
+	mu     sync.Mutex
+	nextID int64
+	orders map[string]model.Order
 }
 
 func NewMemoryOrderRepository() *MemoryOrderRepository {

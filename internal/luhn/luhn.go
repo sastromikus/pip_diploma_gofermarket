@@ -27,5 +27,5 @@ func Valid(number string) bool {
 		double = !double
 	}
 
-	return sum % 10 == 0
+	return sum%10 == 0
 }
