@@ -17,6 +17,10 @@ func main() {
 		log.Fatal("DATABASE_URI is empty")
 	}
 
+	if err := repository.RunMigrations(cfg.DatabaseURI, "migrations"); err != nil {
+		log.Fatalf("migrations failed: %v", err)
+	}
+
 	db, err := repository.NewPostgresDB(cfg.DatabaseURI)
 	if err != nil {
 		log.Fatalf("database connection failed: %v", err)
