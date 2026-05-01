@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"log"
 	"strconv"
+	"io"
+	"strings"
 
 	"github.com/sastromikus/pip_diploma_gofermarket/internal/model"
 	"github.com/sastromikus/pip_diploma_gofermarket/internal/service"
@@ -17,14 +19,20 @@ type AuthService interface {
 }
 
 type Handler struct {
-	auth AuthService
+	auth   AuthService
+	orders OrderService
+}
+
+type OrderService interface {
+	UploadOrder(userID int64, number string) (model.Order, error)
 }
 
 const authCookieName = "user_id"
 
-func NewHandler(auth AuthService) *Handler {
+func NewHandler(auth AuthService, orders OrderService) *Handler {
 	return &Handler{
-		auth: auth,
+		auth:   auth,
+		orders: orders,
 	}
 }
 
@@ -82,7 +90,40 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) UploadOrder(w http.ResponseWriter, r *http.Request) {
-	w.WriteHeader(http.StatusNotImplemented)
+	userID, err := userIDFromContext(r.Context())
+	if err != nil {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	number := strings.TrimSpace(string(body))
+	if number == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	_, err = h.orders.UploadOrder(userID, number)
+	if err != nil {
+		switch {
+		case errors.Is(err, service.ErrInvalidOrderNumber):
+			w.WriteHeader(http.StatusUnprocessableEntity)
+		case errors.Is(err, service.ErrOrderUploadedByUser):
+			w.WriteHeader(http.StatusOK)
+		case errors.Is(err, service.ErrOrderUploadedByOther):
+			w.WriteHeader(http.StatusConflict)
+		default:
+			w.WriteHeader(http.StatusInternalServerError)
+		}
+		return
+	}
+
+	w.WriteHeader(http.StatusAccepted)
 }
 
 func (h *Handler) GetOrders(w http.ResponseWriter, r *http.Request) {

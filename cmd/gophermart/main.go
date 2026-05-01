@@ -29,7 +29,10 @@ func main() {
 
 	userRepo := repository.NewPostgresUserRepository(db)
 	authService := service.NewAuthService(userRepo)
-	h := handler.NewHandler(authService)
+	orderRepo := repository.NewMemoryOrderRepository()
+	orderService := service.NewOrderService(orderRepo)
+
+	h := handler.NewHandler(authService, orderService)
 
 	log.Printf("starting server on %s", cfg.RunAddress)
 
