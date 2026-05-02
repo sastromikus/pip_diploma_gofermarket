@@ -20,8 +20,9 @@ type AuthService interface {
 }
 
 type Handler struct {
-	auth   AuthService
-	orders OrderService
+	auth    AuthService
+	orders  OrderService
+	balance BalanceService
 }
 
 type OrderService interface {
@@ -29,12 +30,17 @@ type OrderService interface {
 	GetOrders(userID int64) ([]model.Order, error)
 }
 
+type BalanceService interface {
+	GetBalance(userID int64) (model.Balance, error)
+}
+
 const authCookieName = "user_id"
 
-func NewHandler(auth AuthService, orders OrderService) *Handler {
+func NewHandler(auth AuthService, orders OrderService, balance BalanceService) *Handler {
 	return &Handler{
-		auth:   auth,
-		orders: orders,
+		auth:    auth,
+		orders:  orders,
+		balance: balance,
 	}
 }
 
@@ -165,7 +171,24 @@ func (h *Handler) GetOrders(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) GetBalance(w http.ResponseWriter, r *http.Request) {
-	w.WriteHeader(http.StatusNotImplemented)
+	userID, err := userIDFromContext(r.Context())
+	if err != nil {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+
+	balance, err := h.balance.GetBalance(userID)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+
+	if err := json.NewEncoder(w).Encode(balance); err != nil {
+		return
+	}
 }
 
 func (h *Handler) Withdraw(w http.ResponseWriter, r *http.Request) {

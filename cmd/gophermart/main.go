@@ -35,8 +35,10 @@ func main() {
 
 	userRepo := repository.NewPostgresUserRepository(db)
 	orderRepo := repository.NewPostgresOrderRepository(db)
+	balanceRepo := repository.NewPostgresBalanceRepository(db)
 	authService := service.NewAuthService(userRepo)
 	orderService := service.NewOrderService(orderRepo)
+	balanceService := service.NewBalanceService(balanceRepo)
 
 	workerCtx, workerCancel := context.WithCancel(context.Background())
 	defer workerCancel()
@@ -47,7 +49,7 @@ func main() {
 		accrualWorker.Start(workerCtx)
 	}
 
-	h := handler.NewHandler(authService, orderService)
+	h := handler.NewHandler(authService, orderService, balanceService)
 
 	srv := &http.Server{
 		Addr:    cfg.RunAddress,
