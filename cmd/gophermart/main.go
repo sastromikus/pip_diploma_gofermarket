@@ -1,9 +1,15 @@
 package main
 
 import (
+	"context"
 	"log"
 	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
+	"github.com/sastromikus/pip_diploma_gofermarket/internal/accrual"
 	"github.com/sastromikus/pip_diploma_gofermarket/internal/config"
 	"github.com/sastromikus/pip_diploma_gofermarket/internal/handler"
 	"github.com/sastromikus/pip_diploma_gofermarket/internal/repository"
@@ -28,15 +34,46 @@ func main() {
 	defer db.Close()
 
 	userRepo := repository.NewPostgresUserRepository(db)
-	authService := service.NewAuthService(userRepo)
 	orderRepo := repository.NewPostgresOrderRepository(db)
+	authService := service.NewAuthService(userRepo)
 	orderService := service.NewOrderService(orderRepo)
+
+	workerCtx, workerCancel := context.WithCancel(context.Background())
+	defer workerCancel()
+
+	if cfg.AccrualSystemAddress != "" {
+		accrualClient := accrual.NewClient(cfg.AccrualSystemAddress)
+		accrualWorker := service.NewAccrualWorker(orderRepo, accrualClient)
+		accrualWorker.Start(workerCtx)
+	}
 
 	h := handler.NewHandler(authService, orderService)
 
-	log.Printf("starting server on %s", cfg.RunAddress)
-
-	if err := http.ListenAndServe(cfg.RunAddress, handler.NewRouter(h)); err != nil {
-		log.Fatal(err)
+	srv := &http.Server{
+		Addr:    cfg.RunAddress,
+		Handler: handler.NewRouter(h),
 	}
+
+	serverCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	go func() {
+		log.Printf("starting server on %s", cfg.RunAddress)
+
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatal(err)
+		}
+	}()
+
+	<-serverCtx.Done()
+	workerCancel()
+
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	if err := srv.Shutdown(shutdownCtx); err != nil {
+		log.Printf("server shutdown failed: %v", err)
+	}
+
+	log.Println("server stopped")
 }
