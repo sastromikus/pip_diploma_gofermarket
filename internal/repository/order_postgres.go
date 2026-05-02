@@ -136,3 +136,70 @@ func (r *PostgresOrderRepository) GetOrdersByUserID(userID int64) ([]model.Order
 
 	return orders, nil
 }
+
+func (r *PostgresOrderRepository) GetPendingOrders(limit int) ([]model.Order, error) {
+	query := `
+		SELECT id, user_id, number, status, accrual, uploaded_at
+		FROM orders
+		WHERE status IN ($1, $2)
+		ORDER BY uploaded_at ASC
+		LIMIT $3
+	`
+
+	rows, err := r.db.QueryContext(
+		context.Background(),
+		query,
+		model.OrderStatusNew,
+		model.OrderStatusProcessing,
+		limit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	orders := make([]model.Order, 0)
+
+	for rows.Next() {
+		var order model.Order
+
+		if err := rows.Scan(
+			&order.ID,
+			&order.UserID,
+			&order.Number,
+			&order.Status,
+			&order.Accrual,
+			&order.UploadedAt,
+		); err != nil {
+			return nil, err
+		}
+
+		orders = append(orders, order)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return orders, nil
+}
+
+func (r *PostgresOrderRepository) UpdateOrderAccrual(number string, status string, accrual *float64) error {
+	query := `
+		UPDATE orders
+		SET status = $1,
+		    accrual = $2,
+		    updated_at = NOW()
+		WHERE number = $3
+	`
+
+	_, err := r.db.ExecContext(
+		context.Background(),
+		query,
+		status,
+		accrual,
+		number,
+	)
+
+	return err
+}

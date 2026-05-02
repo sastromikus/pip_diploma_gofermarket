@@ -61,3 +61,38 @@ func (r *MemoryOrderRepository) GetOrdersByUserID(userID int64) ([]model.Order, 
 
 	return orders, nil
 }
+
+func (r *MemoryOrderRepository) GetPendingOrders(limit int) ([]model.Order, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	orders := make([]model.Order, 0)
+
+	for _, order := range r.orders {
+		if order.Status == model.OrderStatusNew || order.Status == model.OrderStatusProcessing {
+			orders = append(orders, order)
+
+			if len(orders) >= limit {
+				break
+			}
+		}
+	}
+
+	return orders, nil
+}
+
+func (r *MemoryOrderRepository) UpdateOrderAccrual(number string, status string, accrual *float64) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	order, ok := r.orders[number]
+	if !ok {
+		return nil
+	}
+
+	order.Status = status
+	order.Accrual = accrual
+	r.orders[number] = order
+
+	return nil
+}
