@@ -32,6 +32,8 @@ type OrderService interface {
 
 type BalanceService interface {
 	GetBalance(userID int64) (model.Balance, error)
+	Withdraw(userID int64, order string, sum float64) error
+	GetWithdrawals(userID int64) ([]model.Withdrawal, error)
 }
 
 const authCookieName = "user_id"
@@ -192,11 +194,66 @@ func (h *Handler) GetBalance(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) Withdraw(w http.ResponseWriter, r *http.Request) {
-	w.WriteHeader(http.StatusNotImplemented)
+	userID, err := userIDFromContext(r.Context())
+	if err != nil {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+
+	var req model.WithdrawRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	if err := h.balance.Withdraw(userID, req.Order, req.Sum); err != nil {
+		switch {
+		case errors.Is(err, service.ErrInvalidWithdrawOrder):
+			w.WriteHeader(http.StatusUnprocessableEntity)
+		case errors.Is(err, service.ErrInvalidWithdrawSum):
+			w.WriteHeader(http.StatusBadRequest)
+		case errors.Is(err, service.ErrInsufficientFunds):
+			w.WriteHeader(http.StatusPaymentRequired)
+		default:
+			w.WriteHeader(http.StatusInternalServerError)
+		}
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
 }
 
 func (h *Handler) GetWithdrawals(w http.ResponseWriter, r *http.Request) {
-	w.WriteHeader(http.StatusNotImplemented)
+	userID, err := userIDFromContext(r.Context())
+	if err != nil {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+
+	withdrawals, err := h.balance.GetWithdrawals(userID)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	if len(withdrawals) == 0 {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
+	response := make([]model.WithdrawalResponse, 0, len(withdrawals))
+	for _, withdrawal := range withdrawals {
+		response = append(response, model.WithdrawalResponse{
+			Order:       withdrawal.Order,
+			Sum:         withdrawal.Sum,
+			ProcessedAt: withdrawal.ProcessedAt.Format(time.RFC3339),
+		})
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+
+	_ = json.NewEncoder(w).Encode(response)
 }
 
 func setAuthCookie(w http.ResponseWriter, userID int64) {
