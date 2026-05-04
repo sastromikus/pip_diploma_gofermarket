@@ -78,8 +78,12 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
-	var req model.AuthRequest
+	if !hasContentType(r, "application/json") {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
 
+	var req model.AuthRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		return
@@ -106,6 +110,11 @@ func (h *Handler) UploadOrder(w http.ResponseWriter, r *http.Request) {
 	userID, err := userIDFromContext(r.Context())
 	if err != nil {
 		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+
+	if !hasContentType(r, "text/plain") {
+		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
 
