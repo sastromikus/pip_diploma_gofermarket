@@ -79,3 +79,33 @@ func (r *PostgresUserRepository) GetUserByLogin(login string) (model.User, error
 
 	return user, nil
 }
+
+func (r *PostgresUserRepository) GetUserByID(userID int64) (model.User, error) {
+	query := `
+		SELECT id, login, password_hash
+		FROM users
+		WHERE id = $1
+	`
+
+	var user model.User
+
+	err := r.db.QueryRowContext(
+		context.Background(),
+		query,
+		userID,
+	).Scan(
+		&user.ID,
+		&user.Login,
+		&user.PasswordHash,
+	)
+
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return model.User{}, service.ErrInvalidLogin
+		}
+
+		return model.User{}, err
+	}
+
+	return user, nil
+}

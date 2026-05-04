@@ -52,3 +52,16 @@ func (r *MemoryUserRepository) GetUserByLogin(login string) (model.User, error) 
 
 	return user, nil
 }
+
+func (r *MemoryUserRepository) GetUserByID(userID int64) (model.User, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	for _, user := range r.users {
+		if user.ID == userID {
+			return user, nil
+		}
+	}
+
+	return model.User{}, service.ErrInvalidLogin
+}

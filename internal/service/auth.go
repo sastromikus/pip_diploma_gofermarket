@@ -17,6 +17,7 @@ var (
 type UserRepository interface {
 	CreateUser(login string, passwordHash string) (model.User, error)
 	GetUserByLogin(login string) (model.User, error)
+	GetUserByID(userID int64) (model.User, error)
 }
 
 type AuthService struct {
@@ -57,4 +58,12 @@ func (s *AuthService) Login(login string, password string) (model.User, error) {
 	}
 
 	return user, nil
+}
+
+func (s *AuthService) GetUserByID(userID int64) (model.User, error) {
+	if userID <= 0 {
+		return model.User{}, ErrInvalidLogin
+	}
+
+	return s.users.GetUserByID(userID)
 }

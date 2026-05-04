@@ -13,7 +13,7 @@ func NewRouter(h *Handler) http.Handler {
 	r.Post("/api/user/login", h.Login)
 
 	r.Group(func(r chi.Router) {
-		r.Use(AuthMiddleware(h.authManager))
+		r.Use(AuthMiddleware(h.authManager, h.auth))
 
 		r.Post("/api/user/orders", h.UploadOrder)
 		r.Get("/api/user/orders", h.GetOrders)

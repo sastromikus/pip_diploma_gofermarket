@@ -17,6 +17,7 @@ import (
 type AuthService interface {
 	Register(login string, password string) (model.User, error)
 	Login(login string, password string) (model.User, error)
+	GetUserByID(userID int64) (model.User, error)
 }
 
 type Handler struct {
