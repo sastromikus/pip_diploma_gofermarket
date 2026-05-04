@@ -176,12 +176,7 @@ func (h *Handler) GetOrders(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-
-	if err := json.NewEncoder(w).Encode(response); err != nil {
-		return
-	}
+	writeJSON(w, http.StatusOK, response)
 }
 
 func (h *Handler) GetBalance(w http.ResponseWriter, r *http.Request) {
@@ -197,12 +192,7 @@ func (h *Handler) GetBalance(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-
-	if err := json.NewEncoder(w).Encode(balance); err != nil {
-		return
-	}
+	writeJSON(w, http.StatusOK, balance)
 }
 
 func (h *Handler) Withdraw(w http.ResponseWriter, r *http.Request) {
@@ -262,10 +252,7 @@ func (h *Handler) GetWithdrawals(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-
-	_ = json.NewEncoder(w).Encode(response)
+	writeJSON(w, http.StatusOK, response)
 }
 
 func (h *Handler) setAuthCookie(w http.ResponseWriter, userID int64) {

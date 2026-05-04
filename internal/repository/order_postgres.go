@@ -188,17 +188,24 @@ func (r *PostgresOrderRepository) UpdateOrderAccrual(number string, status strin
 	query := `
 		UPDATE orders
 		SET status = $1,
-		    accrual = $2,
+		    accrual = CASE
+		        WHEN $1 = $2 THEN $3
+		        ELSE NULL
+		    END,
 		    updated_at = NOW()
-		WHERE number = $3
+		WHERE number = $4
+		  AND status IN ($5, $6)
 	`
 
 	_, err := r.db.ExecContext(
 		context.Background(),
 		query,
 		status,
+		model.OrderStatusProcessed,
 		accrual,
 		number,
+		model.OrderStatusNew,
+		model.OrderStatusProcessing,
 	)
 
 	return err
