@@ -185,16 +185,21 @@ func (r *PostgresOrderRepository) GetPendingOrders(limit int) ([]model.Order, er
 }
 
 func (r *PostgresOrderRepository) UpdateOrderAccrual(number string, status string, accrual *float64) error {
+	var accrualValue any
+	if accrual != nil {
+		accrualValue = *accrual
+	}
+
 	query := `
 		UPDATE orders
-		SET status = $1,
+		SET status = $1::text,
 		    accrual = CASE
-		        WHEN $1 = $2 THEN $3
-		        ELSE NULL
+		        WHEN $1::text = $2::text THEN $3::numeric
+		        ELSE NULL::numeric
 		    END,
 		    updated_at = NOW()
 		WHERE number = $4
-		  AND status IN ($5, $6)
+		  AND status IN ($5::text, $6::text)
 	`
 
 	_, err := r.db.ExecContext(
@@ -202,7 +207,7 @@ func (r *PostgresOrderRepository) UpdateOrderAccrual(number string, status strin
 		query,
 		status,
 		model.OrderStatusProcessed,
-		accrual,
+		accrualValue,
 		number,
 		model.OrderStatusNew,
 		model.OrderStatusProcessing,
