@@ -6,10 +6,10 @@ import (
 	"io"
 	"log"
 	"net/http"
-	"strconv"
 	"strings"
 	"time"
 
+	"github.com/sastromikus/pip_diploma_gofermarket/internal/auth"
 	"github.com/sastromikus/pip_diploma_gofermarket/internal/model"
 	"github.com/sastromikus/pip_diploma_gofermarket/internal/service"
 )
@@ -20,9 +20,10 @@ type AuthService interface {
 }
 
 type Handler struct {
-	auth    AuthService
-	orders  OrderService
-	balance BalanceService
+	auth        AuthService
+	orders      OrderService
+	balance     BalanceService
+	authManager *auth.Manager
 }
 
 type OrderService interface {
@@ -38,11 +39,12 @@ type BalanceService interface {
 
 const authCookieName = "user_id"
 
-func NewHandler(auth AuthService, orders OrderService, balance BalanceService) *Handler {
+func NewHandler(authService AuthService, orders OrderService, balance BalanceService, authManager *auth.Manager) *Handler {
 	return &Handler{
-		auth:    auth,
-		orders:  orders,
-		balance: balance,
+		auth:        authService,
+		orders:      orders,
+		balance:     balance,
+		authManager: authManager,
 	}
 }
 
@@ -70,7 +72,7 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	setAuthCookie(w, user.ID)
+	h.setAuthCookie(w, user.ID)
 	w.WriteHeader(http.StatusOK)
 }
 
@@ -95,7 +97,7 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	setAuthCookie(w, user.ID)
+	h.setAuthCookie(w, user.ID)
 	w.WriteHeader(http.StatusOK)
 }
 
@@ -256,10 +258,10 @@ func (h *Handler) GetWithdrawals(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(response)
 }
 
-func setAuthCookie(w http.ResponseWriter, userID int64) {
+func (h *Handler) setAuthCookie(w http.ResponseWriter, userID int64) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     authCookieName,
-		Value:    strconv.FormatInt(userID, 10),
+		Value:    h.authManager.BuildToken(userID),
 		Path:     "/",
 		HttpOnly: true,
 	})

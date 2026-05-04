@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/sastromikus/pip_diploma_gofermarket/internal/accrual"
+	"github.com/sastromikus/pip_diploma_gofermarket/internal/auth"
 	"github.com/sastromikus/pip_diploma_gofermarket/internal/config"
 	"github.com/sastromikus/pip_diploma_gofermarket/internal/handler"
 	"github.com/sastromikus/pip_diploma_gofermarket/internal/repository"
@@ -49,7 +50,8 @@ func main() {
 		accrualWorker.Start(workerCtx)
 	}
 
-	h := handler.NewHandler(authService, orderService, balanceService)
+	authManager := auth.NewManager(cfg.AuthSecret)
+	h := handler.NewHandler(authService, orderService, balanceService, authManager)
 
 	srv := &http.Server{
 		Addr:    cfg.RunAddress,
