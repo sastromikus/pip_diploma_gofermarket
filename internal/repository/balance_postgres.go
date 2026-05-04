@@ -106,6 +106,16 @@ func (r *PostgresBalanceRepository) Withdraw(userID int64, order string, sum flo
 	}
 	defer tx.Rollback()
 
+	var lockedUserID int64
+
+	if err := tx.QueryRowContext(
+		context.Background(),
+		`SELECT id FROM users WHERE id = $1 FOR UPDATE`,
+		userID,
+	).Scan(&lockedUserID); err != nil {
+		return err
+	}
+
 	var current float64
 
 	queryBalance := `
