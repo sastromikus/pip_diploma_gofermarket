@@ -53,15 +53,12 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 	var req model.AuthRequest
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		log.Printf("decode error: %v", err)
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
 
 	user, err := h.auth.Register(req.Login, req.Password)
 	if err != nil {
-		log.Printf("register error: %v", err)
-
 		switch {
 		case errors.Is(err, service.ErrInvalidAuthData):
 			w.WriteHeader(http.StatusBadRequest)
