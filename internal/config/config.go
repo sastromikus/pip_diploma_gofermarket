@@ -4,6 +4,7 @@ import (
 	"flag"
 	"net"
 	"os"
+	"strings"
 )
 
 type Config struct {
@@ -27,8 +28,15 @@ func Load() Config {
 	flag.StringVar(&cfg.AuthSecret, "s", cfg.AuthSecret, "auth secret")
 	flag.Parse()
 
-	// Practicum checks expect environment variables to override command-line flags.
-	// This also keeps the service compatible with both local runs and CI runs.
+	applyEnv(&cfg)
+
+	cfg.RunAddress = normalizeRunAddress(cfg.RunAddress)
+	cfg.AccrualSystemAddress = normalizeHTTPAddress(cfg.AccrualSystemAddress)
+
+	return cfg
+}
+
+func applyEnv(cfg *Config) {
 	if v := os.Getenv("RUN_ADDRESS"); v != "" {
 		cfg.RunAddress = v
 	}
@@ -41,23 +49,40 @@ func Load() Config {
 	if v := os.Getenv("AUTH_SECRET"); v != "" {
 		cfg.AuthSecret = v
 	}
-
-	cfg.RunAddress = normalizeRunAddress(cfg.RunAddress)
-
-	return cfg
 }
 
-func normalizeRunAddress(addr string) string {
-	host, port, err := net.SplitHostPort(addr)
-	if err != nil {
-		return addr
+func normalizeRunAddress(address string) string {
+	address = strings.TrimSpace(address)
+	if address == "" {
+		return address
 	}
 
-	// On Windows, listening on "localhost:port" can bind only IPv4 while the
-	// test client resolves localhost to ::1. Listening on ":port" accepts both.
-	if host == "localhost" || host == "127.0.0.1" || host == "::1" || host == "[::1]" {
+	host, port, err := net.SplitHostPort(address)
+	if err != nil {
+		return address
+	}
+
+	if host == "localhost" || host == "127.0.0.1" || host == "::1" {
 		return ":" + port
 	}
 
-	return addr
+	return address
+}
+
+func normalizeHTTPAddress(address string) string {
+	address = strings.TrimSpace(address)
+	if address == "" {
+		return address
+	}
+
+	if !strings.HasPrefix(address, "http://") && !strings.HasPrefix(address, "https://") {
+		address = "http://" + address
+	}
+
+	// On Windows localhost often resolves to ::1 first. The test binaries and
+	// local servers are commonly bound to IPv4, so prefer 127.0.0.1 for loopback.
+	address = strings.Replace(address, "http://localhost:", "http://127.0.0.1:", 1)
+	address = strings.Replace(address, "https://localhost:", "https://127.0.0.1:", 1)
+
+	return strings.TrimRight(address, "/")
 }
