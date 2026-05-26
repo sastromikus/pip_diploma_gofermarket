@@ -22,8 +22,15 @@ type Client struct {
 }
 
 func NewClient(baseURL string) *Client {
+	baseURL = strings.TrimSpace(baseURL)
+	if !strings.HasPrefix(baseURL, "http://") && !strings.HasPrefix(baseURL, "https://") {
+		baseURL = "http://" + baseURL
+	}
+	baseURL = strings.Replace(baseURL, "http://localhost:", "http://127.0.0.1:", 1)
+	baseURL = strings.Replace(baseURL, "https://localhost:", "https://127.0.0.1:", 1)
+
 	return &Client{
-		baseURL: normalizeBaseURL(baseURL),
+		baseURL: strings.TrimRight(baseURL, "/"),
 		httpClient: &http.Client{
 			Timeout: 5 * time.Second,
 		},
@@ -58,17 +65,6 @@ func (c *Client) GetOrder(number string) (model.AccrualResponse, time.Duration, 
 	default:
 		return model.AccrualResponse{}, 0, fmt.Errorf("unexpected accrual status: %d", resp.StatusCode)
 	}
-}
-
-func normalizeBaseURL(baseURL string) string {
-	baseURL = strings.TrimSpace(baseURL)
-	if baseURL == "" {
-		return baseURL
-	}
-	if !strings.HasPrefix(baseURL, "http://") && !strings.HasPrefix(baseURL, "https://") {
-		baseURL = "http://" + baseURL
-	}
-	return strings.TrimRight(baseURL, "/")
 }
 
 func parseRetryAfter(value string) time.Duration {

@@ -49,6 +49,11 @@ func NewHandler(authService AuthService, orders OrderService, balance BalanceSer
 }
 
 func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
+	if !hasContentType(r, "application/json") {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
 	var req model.AuthRequest
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -195,6 +200,11 @@ func (h *Handler) Withdraw(w http.ResponseWriter, r *http.Request) {
 	userID, err := userIDFromContext(r.Context())
 	if err != nil {
 		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+
+	if !hasContentType(r, "application/json") {
+		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
 
