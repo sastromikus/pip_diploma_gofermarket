@@ -2,17 +2,19 @@ package repository
 
 import (
 	"context"
-	"database/sql"
 	"errors"
+
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/sastromikus/pip_diploma_gofermarket/internal/model"
 )
 
 type PostgresOrderRepository struct {
-	db *sql.DB
+	db *pgxpool.Pool
 }
 
-func NewPostgresOrderRepository(db *sql.DB) *PostgresOrderRepository {
+func NewPostgresOrderRepository(db *pgxpool.Pool) *PostgresOrderRepository {
 	return &PostgresOrderRepository{
 		db: db,
 	}
@@ -27,7 +29,7 @@ func (r *PostgresOrderRepository) CreateOrder(ctx context.Context, userID int64,
 
 	var order model.Order
 
-	err := r.db.QueryRowContext(
+	err := r.db.QueryRow(
 		ctx,
 		query,
 		userID,
@@ -71,7 +73,7 @@ func (r *PostgresOrderRepository) GetOrderByNumber(ctx context.Context, number s
 
 	var order model.Order
 
-	err := r.db.QueryRowContext(
+	err := r.db.QueryRow(
 		ctx,
 		query,
 		number,
@@ -85,7 +87,7 @@ func (r *PostgresOrderRepository) GetOrderByNumber(ctx context.Context, number s
 	)
 
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
+		if errors.Is(err, pgx.ErrNoRows) {
 			return model.Order{}, ErrOrderNotFound
 		}
 
@@ -103,7 +105,7 @@ func (r *PostgresOrderRepository) GetOrdersByUserID(ctx context.Context, userID 
 		ORDER BY uploaded_at DESC
 	`
 
-	rows, err := r.db.QueryContext(ctx, query, userID)
+	rows, err := r.db.Query(ctx, query, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -145,7 +147,7 @@ func (r *PostgresOrderRepository) GetPendingOrders(ctx context.Context, limit in
 		LIMIT $3
 	`
 
-	rows, err := r.db.QueryContext(
+	rows, err := r.db.Query(
 		ctx,
 		query,
 		model.OrderStatusNew,
@@ -201,7 +203,7 @@ func (r *PostgresOrderRepository) UpdateOrderAccrual(ctx context.Context, number
 		  AND status IN ($5::text, $6::text)
 	`
 
-	_, err := r.db.ExecContext(
+	_, err := r.db.Exec(
 		ctx,
 		query,
 		status,

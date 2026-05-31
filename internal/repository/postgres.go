@@ -2,25 +2,24 @@ package repository
 
 import (
 	"context"
-	"database/sql"
 	"time"
 
-	_ "github.com/jackc/pgx/v5/stdlib"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-func NewPostgresDB(databaseURI string) (*sql.DB, error) {
-	db, err := sql.Open("pgx", databaseURI)
+func NewPostgresDB(databaseURI string) (*pgxpool.Pool, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	pool, err := pgxpool.New(ctx, databaseURI)
 	if err != nil {
 		return nil, err
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	if err := db.PingContext(ctx); err != nil {
-		_ = db.Close()
+	if err := pool.Ping(ctx); err != nil {
+		pool.Close()
 		return nil, err
 	}
 
-	return db, nil
+	return pool, nil
 }

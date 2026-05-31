@@ -2,16 +2,16 @@ package repository
 
 import (
 	"context"
-	"database/sql"
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/sastromikus/pip_diploma_gofermarket/internal/model"
 )
 
 type PostgresBalanceRepository struct {
-	db *sql.DB
+	db *pgxpool.Pool
 }
 
-func NewPostgresBalanceRepository(db *sql.DB) *PostgresBalanceRepository {
+func NewPostgresBalanceRepository(db *pgxpool.Pool) *PostgresBalanceRepository {
 	return &PostgresBalanceRepository{
 		db: db,
 	}
@@ -43,7 +43,7 @@ func (r *PostgresBalanceRepository) GetBalance(ctx context.Context, userID int64
 
 	var balance model.Balance
 
-	err := r.db.QueryRowContext(
+	err := r.db.QueryRow(
 		ctx,
 		query,
 		userID,
@@ -67,7 +67,7 @@ func (r *PostgresBalanceRepository) GetWithdrawals(ctx context.Context, userID i
 		ORDER BY processed_at DESC
 	`
 
-	rows, err := r.db.QueryContext(ctx, query, userID)
+	rows, err := r.db.Query(ctx, query, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -99,15 +99,15 @@ func (r *PostgresBalanceRepository) GetWithdrawals(ctx context.Context, userID i
 }
 
 func (r *PostgresBalanceRepository) Withdraw(ctx context.Context, userID int64, order string, sum float64) error {
-	tx, err := r.db.BeginTx(ctx, nil)
+	tx, err := r.db.Begin(ctx)
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer tx.Rollback(ctx)
 
 	var lockedUserID int64
 
-	if err := tx.QueryRowContext(
+	if err := tx.QueryRow(
 		ctx,
 		`SELECT id FROM users WHERE id = $1 FOR UPDATE`,
 		userID,
@@ -134,7 +134,7 @@ func (r *PostgresBalanceRepository) Withdraw(ctx context.Context, userID int64, 
 			), 0) AS current
 	`
 
-	if err := tx.QueryRowContext(ctx, queryBalance, userID).Scan(&current); err != nil {
+	if err := tx.QueryRow(ctx, queryBalance, userID).Scan(&current); err != nil {
 		return err
 	}
 
@@ -147,9 +147,9 @@ func (r *PostgresBalanceRepository) Withdraw(ctx context.Context, userID int64, 
 		VALUES ($1, $2, $3)
 	`
 
-	if _, err := tx.ExecContext(ctx, queryWithdraw, userID, order, sum); err != nil {
+	if _, err := tx.Exec(ctx, queryWithdraw, userID, order, sum); err != nil {
 		return err
 	}
 
-	return tx.Commit()
+	return tx.Commit(ctx)
 }

@@ -2,17 +2,19 @@ package repository
 
 import (
 	"context"
-	"database/sql"
 	"errors"
+
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/sastromikus/pip_diploma_gofermarket/internal/model"
 )
 
 type PostgresUserRepository struct {
-	db *sql.DB
+	db *pgxpool.Pool
 }
 
-func NewPostgresUserRepository(db *sql.DB) *PostgresUserRepository {
+func NewPostgresUserRepository(db *pgxpool.Pool) *PostgresUserRepository {
 	return &PostgresUserRepository{
 		db: db,
 	}
@@ -27,7 +29,7 @@ func (r *PostgresUserRepository) CreateUser(ctx context.Context, login string, p
 
 	var user model.User
 
-	err := r.db.QueryRowContext(
+	err := r.db.QueryRow(
 		ctx,
 		query,
 		login,
@@ -58,7 +60,7 @@ func (r *PostgresUserRepository) GetUserByLogin(ctx context.Context, login strin
 
 	var user model.User
 
-	err := r.db.QueryRowContext(
+	err := r.db.QueryRow(
 		ctx,
 		query,
 		login,
@@ -69,7 +71,7 @@ func (r *PostgresUserRepository) GetUserByLogin(ctx context.Context, login strin
 	)
 
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
+		if errors.Is(err, pgx.ErrNoRows) {
 			return model.User{}, ErrUserNotFound
 		}
 
@@ -88,7 +90,7 @@ func (r *PostgresUserRepository) GetUserByID(ctx context.Context, userID int64) 
 
 	var user model.User
 
-	err := r.db.QueryRowContext(
+	err := r.db.QueryRow(
 		ctx,
 		query,
 		userID,
@@ -99,7 +101,7 @@ func (r *PostgresUserRepository) GetUserByID(ctx context.Context, userID int64) 
 	)
 
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
+		if errors.Is(err, pgx.ErrNoRows) {
 			return model.User{}, ErrUserNotFound
 		}
 
