@@ -16,10 +16,10 @@ type Config struct {
 
 func Load() Config {
 	cfg := Config{
-		RunAddress:           "localhost:8080",
-		DatabaseURI:          "",
-		AccrualSystemAddress: "",
-		AuthSecret:           "dev-secret",
+		RunAddress:           getEnvDefault("RUN_ADDRESS", "localhost:8080"),
+		DatabaseURI:          getEnvDefault("DATABASE_URI", ""),
+		AccrualSystemAddress: getEnvDefault("ACCRUAL_SYSTEM_ADDRESS", ""),
+		AuthSecret:           getEnvDefault("AUTH_SECRET", "dev-secret"),
 	}
 
 	flag.StringVar(&cfg.RunAddress, "a", cfg.RunAddress, "server run address")
@@ -28,27 +28,18 @@ func Load() Config {
 	flag.StringVar(&cfg.AuthSecret, "s", cfg.AuthSecret, "auth secret")
 	flag.Parse()
 
-	applyEnv(&cfg)
-
 	cfg.RunAddress = normalizeRunAddress(cfg.RunAddress)
 	cfg.AccrualSystemAddress = normalizeHTTPAddress(cfg.AccrualSystemAddress)
 
 	return cfg
 }
 
-func applyEnv(cfg *Config) {
-	if v := os.Getenv("RUN_ADDRESS"); v != "" {
-		cfg.RunAddress = v
+func getEnvDefault(name string, fallback string) string {
+	if value := os.Getenv(name); value != "" {
+		return value
 	}
-	if v := os.Getenv("DATABASE_URI"); v != "" {
-		cfg.DatabaseURI = v
-	}
-	if v := os.Getenv("ACCRUAL_SYSTEM_ADDRESS"); v != "" {
-		cfg.AccrualSystemAddress = v
-	}
-	if v := os.Getenv("AUTH_SECRET"); v != "" {
-		cfg.AuthSecret = v
-	}
+
+	return fallback
 }
 
 func normalizeRunAddress(address string) string {

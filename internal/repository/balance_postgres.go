@@ -5,7 +5,6 @@ import (
 	"database/sql"
 
 	"github.com/sastromikus/pip_diploma_gofermarket/internal/model"
-	"github.com/sastromikus/pip_diploma_gofermarket/internal/service"
 )
 
 type PostgresBalanceRepository struct {
@@ -18,7 +17,7 @@ func NewPostgresBalanceRepository(db *sql.DB) *PostgresBalanceRepository {
 	}
 }
 
-func (r *PostgresBalanceRepository) GetBalance(userID int64) (model.Balance, error) {
+func (r *PostgresBalanceRepository) GetBalance(ctx context.Context, userID int64) (model.Balance, error) {
 	query := `
 		SELECT
 			COALESCE((
@@ -45,7 +44,7 @@ func (r *PostgresBalanceRepository) GetBalance(userID int64) (model.Balance, err
 	var balance model.Balance
 
 	err := r.db.QueryRowContext(
-		context.Background(),
+		ctx,
 		query,
 		userID,
 	).Scan(
@@ -60,7 +59,7 @@ func (r *PostgresBalanceRepository) GetBalance(userID int64) (model.Balance, err
 	return balance, nil
 }
 
-func (r *PostgresBalanceRepository) GetWithdrawals(userID int64) ([]model.Withdrawal, error) {
+func (r *PostgresBalanceRepository) GetWithdrawals(ctx context.Context, userID int64) ([]model.Withdrawal, error) {
 	query := `
 		SELECT id, user_id, order_number, sum, processed_at
 		FROM withdrawals
@@ -68,7 +67,7 @@ func (r *PostgresBalanceRepository) GetWithdrawals(userID int64) ([]model.Withdr
 		ORDER BY processed_at DESC
 	`
 
-	rows, err := r.db.QueryContext(context.Background(), query, userID)
+	rows, err := r.db.QueryContext(ctx, query, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -99,8 +98,8 @@ func (r *PostgresBalanceRepository) GetWithdrawals(userID int64) ([]model.Withdr
 	return withdrawals, nil
 }
 
-func (r *PostgresBalanceRepository) Withdraw(userID int64, order string, sum float64) error {
-	tx, err := r.db.BeginTx(context.Background(), nil)
+func (r *PostgresBalanceRepository) Withdraw(ctx context.Context, userID int64, order string, sum float64) error {
+	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
@@ -109,7 +108,7 @@ func (r *PostgresBalanceRepository) Withdraw(userID int64, order string, sum flo
 	var lockedUserID int64
 
 	if err := tx.QueryRowContext(
-		context.Background(),
+		ctx,
 		`SELECT id FROM users WHERE id = $1 FOR UPDATE`,
 		userID,
 	).Scan(&lockedUserID); err != nil {
@@ -135,12 +134,12 @@ func (r *PostgresBalanceRepository) Withdraw(userID int64, order string, sum flo
 			), 0) AS current
 	`
 
-	if err := tx.QueryRowContext(context.Background(), queryBalance, userID).Scan(&current); err != nil {
+	if err := tx.QueryRowContext(ctx, queryBalance, userID).Scan(&current); err != nil {
 		return err
 	}
 
 	if current < sum {
-		return service.ErrInsufficientFunds
+		return ErrInsufficientFunds
 	}
 
 	queryWithdraw := `
@@ -148,7 +147,7 @@ func (r *PostgresBalanceRepository) Withdraw(userID int64, order string, sum flo
 		VALUES ($1, $2, $3)
 	`
 
-	if _, err := tx.ExecContext(context.Background(), queryWithdraw, userID, order, sum); err != nil {
+	if _, err := tx.ExecContext(ctx, queryWithdraw, userID, order, sum); err != nil {
 		return err
 	}
 

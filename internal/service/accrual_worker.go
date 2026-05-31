@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log"
+	"sync"
 	"time"
 
 	"github.com/sastromikus/pip_diploma_gofermarket/internal/accrual"
@@ -11,7 +12,7 @@ import (
 )
 
 type AccrualClient interface {
-	GetOrder(number string) (model.AccrualResponse, time.Duration, error)
+	GetOrder(ctx context.Context, number string) (model.AccrualResponse, time.Duration, error)
 }
 
 type AccrualWorker struct {
@@ -20,6 +21,8 @@ type AccrualWorker struct {
 
 	pollInterval time.Duration
 	batchSize    int
+
+	wg sync.WaitGroup
 }
 
 func NewAccrualWorker(orders OrderRepository, client AccrualClient) *AccrualWorker {
@@ -32,7 +35,15 @@ func NewAccrualWorker(orders OrderRepository, client AccrualClient) *AccrualWork
 }
 
 func (w *AccrualWorker) Start(ctx context.Context) {
-	go w.run(ctx)
+	w.wg.Add(1)
+	go func() {
+		defer w.wg.Done()
+		w.run(ctx)
+	}()
+}
+
+func (w *AccrualWorker) Wait() {
+	w.wg.Wait()
 }
 
 func (w *AccrualWorker) run(ctx context.Context) {
@@ -50,7 +61,7 @@ func (w *AccrualWorker) run(ctx context.Context) {
 }
 
 func (w *AccrualWorker) processBatch(ctx context.Context) {
-	orders, err := w.orders.GetPendingOrders(w.batchSize)
+	orders, err := w.orders.GetPendingOrders(ctx, w.batchSize)
 	if err != nil {
 		log.Printf("accrual worker: get pending orders: %v", err)
 		return
@@ -63,7 +74,7 @@ func (w *AccrualWorker) processBatch(ctx context.Context) {
 		default:
 		}
 
-		result, retryAfter, err := w.client.GetOrder(order.Number)
+		result, retryAfter, err := w.client.GetOrder(ctx, order.Number)
 
 		if err != nil {
 			switch {
@@ -77,10 +88,17 @@ func (w *AccrualWorker) processBatch(ctx context.Context) {
 
 				log.Printf("accrual worker: too many requests, retry after %s", retryAfter)
 
+				timer := time.NewTimer(retryAfter)
 				select {
 				case <-ctx.Done():
+					if !timer.Stop() {
+						select {
+						case <-timer.C:
+						default:
+						}
+					}
 					return
-				case <-time.After(retryAfter):
+				case <-timer.C:
 					return
 				}
 
@@ -95,7 +113,7 @@ func (w *AccrualWorker) processBatch(ctx context.Context) {
 			continue
 		}
 
-		if err := w.orders.UpdateOrderAccrual(order.Number, status, result.Accrual); err != nil {
+		if err := w.orders.UpdateOrderAccrual(ctx, order.Number, status, result.Accrual); err != nil {
 			log.Printf("accrual worker: update order %s: %v", order.Number, err)
 		}
 	}

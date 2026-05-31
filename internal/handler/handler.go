@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -14,9 +15,9 @@ import (
 )
 
 type AuthService interface {
-	Register(login string, password string) (model.User, error)
-	Login(login string, password string) (model.User, error)
-	GetUserByID(userID int64) (model.User, error)
+	Register(ctx context.Context, login string, password string) (model.User, error)
+	Login(ctx context.Context, login string, password string) (model.User, error)
+	GetUserByID(ctx context.Context, userID int64) (model.User, error)
 }
 
 type Handler struct {
@@ -27,14 +28,14 @@ type Handler struct {
 }
 
 type OrderService interface {
-	UploadOrder(userID int64, number string) (model.Order, error)
-	GetOrders(userID int64) ([]model.Order, error)
+	UploadOrder(ctx context.Context, userID int64, number string) (model.Order, error)
+	GetOrders(ctx context.Context, userID int64) ([]model.Order, error)
 }
 
 type BalanceService interface {
-	GetBalance(userID int64) (model.Balance, error)
-	Withdraw(userID int64, order string, sum float64) error
-	GetWithdrawals(userID int64) ([]model.Withdrawal, error)
+	GetBalance(ctx context.Context, userID int64) (model.Balance, error)
+	Withdraw(ctx context.Context, userID int64, order string, sum float64) error
+	GetWithdrawals(ctx context.Context, userID int64) ([]model.Withdrawal, error)
 }
 
 const authCookieName = "user_id"
@@ -61,7 +62,7 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, err := h.auth.Register(req.Login, req.Password)
+	user, err := h.auth.Register(r.Context(), req.Login, req.Password)
 	if err != nil {
 		switch {
 		case errors.Is(err, service.ErrInvalidAuthData):
@@ -90,7 +91,7 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, err := h.auth.Login(req.Login, req.Password)
+	user, err := h.auth.Login(r.Context(), req.Login, req.Password)
 	if err != nil {
 		switch {
 		case errors.Is(err, service.ErrInvalidAuthData):
@@ -131,7 +132,7 @@ func (h *Handler) UploadOrder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, err = h.orders.UploadOrder(userID, number)
+	_, err = h.orders.UploadOrder(r.Context(), userID, number)
 	if err != nil {
 		switch {
 		case errors.Is(err, service.ErrInvalidOrderNumber):
@@ -156,7 +157,7 @@ func (h *Handler) GetOrders(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	orders, err := h.orders.GetOrders(userID)
+	orders, err := h.orders.GetOrders(r.Context(), userID)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
@@ -187,7 +188,7 @@ func (h *Handler) GetBalance(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	balance, err := h.balance.GetBalance(userID)
+	balance, err := h.balance.GetBalance(r.Context(), userID)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
@@ -214,7 +215,7 @@ func (h *Handler) Withdraw(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.balance.Withdraw(userID, req.Order, req.Sum); err != nil {
+	if err := h.balance.Withdraw(r.Context(), userID, req.Order, req.Sum); err != nil {
 		switch {
 		case errors.Is(err, service.ErrInvalidWithdrawOrder):
 			w.WriteHeader(http.StatusUnprocessableEntity)
@@ -238,7 +239,7 @@ func (h *Handler) GetWithdrawals(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	withdrawals, err := h.balance.GetWithdrawals(userID)
+	withdrawals, err := h.balance.GetWithdrawals(r.Context(), userID)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		return

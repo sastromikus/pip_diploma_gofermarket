@@ -44,9 +44,11 @@ func main() {
 	workerCtx, workerCancel := context.WithCancel(context.Background())
 	defer workerCancel()
 
+	var accrualWorker *service.AccrualWorker
+
 	if cfg.AccrualSystemAddress != "" {
 		accrualClient := accrual.NewClient(cfg.AccrualSystemAddress)
-		accrualWorker := service.NewAccrualWorker(orderRepo, accrualClient)
+		accrualWorker = service.NewAccrualWorker(orderRepo, accrualClient)
 		accrualWorker.Start(workerCtx)
 	}
 
@@ -71,6 +73,10 @@ func main() {
 
 	<-serverCtx.Done()
 	workerCancel()
+
+	if accrualWorker != nil {
+		accrualWorker.Wait()
+	}
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()

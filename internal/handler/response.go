@@ -11,7 +11,3 @@ func writeJSON(w http.ResponseWriter, statusCode int, value any) {
 
 	_ = json.NewEncoder(w).Encode(value)
 }
-
-func writeStatus(w http.ResponseWriter, statusCode int) {
-	w.WriteHeader(statusCode)
-}

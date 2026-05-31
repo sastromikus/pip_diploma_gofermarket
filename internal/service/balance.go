@@ -1,10 +1,12 @@
 package service
 
 import (
+	"context"
 	"errors"
 
 	"github.com/sastromikus/pip_diploma_gofermarket/internal/luhn"
 	"github.com/sastromikus/pip_diploma_gofermarket/internal/model"
+	"github.com/sastromikus/pip_diploma_gofermarket/internal/repository"
 )
 
 var (
@@ -14,9 +16,9 @@ var (
 )
 
 type BalanceRepository interface {
-	GetBalance(userID int64) (model.Balance, error)
-	Withdraw(userID int64, order string, sum float64) error
-	GetWithdrawals(userID int64) ([]model.Withdrawal, error)
+	GetBalance(ctx context.Context, userID int64) (model.Balance, error)
+	Withdraw(ctx context.Context, userID int64, order string, sum float64) error
+	GetWithdrawals(ctx context.Context, userID int64) ([]model.Withdrawal, error)
 }
 
 type BalanceService struct {
@@ -29,11 +31,11 @@ func NewBalanceService(balance BalanceRepository) *BalanceService {
 	}
 }
 
-func (s *BalanceService) GetBalance(userID int64) (model.Balance, error) {
-	return s.balance.GetBalance(userID)
+func (s *BalanceService) GetBalance(ctx context.Context, userID int64) (model.Balance, error) {
+	return s.balance.GetBalance(ctx, userID)
 }
 
-func (s *BalanceService) Withdraw(userID int64, order string, sum float64) error {
+func (s *BalanceService) Withdraw(ctx context.Context, userID int64, order string, sum float64) error {
 	if !luhn.Valid(order) {
 		return ErrInvalidWithdrawOrder
 	}
@@ -42,9 +44,17 @@ func (s *BalanceService) Withdraw(userID int64, order string, sum float64) error
 		return ErrInvalidWithdrawSum
 	}
 
-	return s.balance.Withdraw(userID, order, sum)
+	if err := s.balance.Withdraw(ctx, userID, order, sum); err != nil {
+		if errors.Is(err, repository.ErrInsufficientFunds) {
+			return ErrInsufficientFunds
+		}
+
+		return err
+	}
+
+	return nil
 }
 
-func (s *BalanceService) GetWithdrawals(userID int64) ([]model.Withdrawal, error) {
-	return s.balance.GetWithdrawals(userID)
+func (s *BalanceService) GetWithdrawals(ctx context.Context, userID int64) ([]model.Withdrawal, error) {
+	return s.balance.GetWithdrawals(ctx, userID)
 }

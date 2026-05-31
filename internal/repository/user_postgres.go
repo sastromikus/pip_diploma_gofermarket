@@ -6,7 +6,6 @@ import (
 	"errors"
 
 	"github.com/sastromikus/pip_diploma_gofermarket/internal/model"
-	"github.com/sastromikus/pip_diploma_gofermarket/internal/service"
 )
 
 type PostgresUserRepository struct {
@@ -19,7 +18,7 @@ func NewPostgresUserRepository(db *sql.DB) *PostgresUserRepository {
 	}
 }
 
-func (r *PostgresUserRepository) CreateUser(login string, passwordHash string) (model.User, error) {
+func (r *PostgresUserRepository) CreateUser(ctx context.Context, login string, passwordHash string) (model.User, error) {
 	query := `
 		INSERT INTO users (login, password_hash)
 		VALUES ($1, $2)
@@ -29,7 +28,7 @@ func (r *PostgresUserRepository) CreateUser(login string, passwordHash string) (
 	var user model.User
 
 	err := r.db.QueryRowContext(
-		context.Background(),
+		ctx,
 		query,
 		login,
 		passwordHash,
@@ -41,7 +40,7 @@ func (r *PostgresUserRepository) CreateUser(login string, passwordHash string) (
 
 	if err != nil {
 		if isUniqueViolation(err) {
-			return model.User{}, service.ErrLoginTaken
+			return model.User{}, ErrUserAlreadyExists
 		}
 
 		return model.User{}, err
@@ -50,7 +49,7 @@ func (r *PostgresUserRepository) CreateUser(login string, passwordHash string) (
 	return user, nil
 }
 
-func (r *PostgresUserRepository) GetUserByLogin(login string) (model.User, error) {
+func (r *PostgresUserRepository) GetUserByLogin(ctx context.Context, login string) (model.User, error) {
 	query := `
 		SELECT id, login, password_hash
 		FROM users
@@ -60,7 +59,7 @@ func (r *PostgresUserRepository) GetUserByLogin(login string) (model.User, error
 	var user model.User
 
 	err := r.db.QueryRowContext(
-		context.Background(),
+		ctx,
 		query,
 		login,
 	).Scan(
@@ -71,7 +70,7 @@ func (r *PostgresUserRepository) GetUserByLogin(login string) (model.User, error
 
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return model.User{}, service.ErrInvalidLogin
+			return model.User{}, ErrUserNotFound
 		}
 
 		return model.User{}, err
@@ -80,7 +79,7 @@ func (r *PostgresUserRepository) GetUserByLogin(login string) (model.User, error
 	return user, nil
 }
 
-func (r *PostgresUserRepository) GetUserByID(userID int64) (model.User, error) {
+func (r *PostgresUserRepository) GetUserByID(ctx context.Context, userID int64) (model.User, error) {
 	query := `
 		SELECT id, login, password_hash
 		FROM users
@@ -90,7 +89,7 @@ func (r *PostgresUserRepository) GetUserByID(userID int64) (model.User, error) {
 	var user model.User
 
 	err := r.db.QueryRowContext(
-		context.Background(),
+		ctx,
 		query,
 		userID,
 	).Scan(
@@ -101,7 +100,7 @@ func (r *PostgresUserRepository) GetUserByID(userID int64) (model.User, error) {
 
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return model.User{}, service.ErrInvalidLogin
+			return model.User{}, ErrUserNotFound
 		}
 
 		return model.User{}, err

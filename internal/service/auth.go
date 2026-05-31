@@ -1,11 +1,13 @@
 package service
 
 import (
+	"context"
 	"errors"
 
 	"golang.org/x/crypto/bcrypt"
 
 	"github.com/sastromikus/pip_diploma_gofermarket/internal/model"
+	"github.com/sastromikus/pip_diploma_gofermarket/internal/repository"
 )
 
 var (
@@ -15,9 +17,9 @@ var (
 )
 
 type UserRepository interface {
-	CreateUser(login string, passwordHash string) (model.User, error)
-	GetUserByLogin(login string) (model.User, error)
-	GetUserByID(userID int64) (model.User, error)
+	CreateUser(ctx context.Context, login string, passwordHash string) (model.User, error)
+	GetUserByLogin(ctx context.Context, login string) (model.User, error)
+	GetUserByID(ctx context.Context, userID int64) (model.User, error)
 }
 
 type AuthService struct {
@@ -30,7 +32,7 @@ func NewAuthService(users UserRepository) *AuthService {
 	}
 }
 
-func (s *AuthService) Register(login string, password string) (model.User, error) {
+func (s *AuthService) Register(ctx context.Context, login string, password string) (model.User, error) {
 	if login == "" || password == "" {
 		return model.User{}, ErrInvalidAuthData
 	}
@@ -40,17 +42,30 @@ func (s *AuthService) Register(login string, password string) (model.User, error
 		return model.User{}, err
 	}
 
-	return s.users.CreateUser(login, string(hash))
+	user, err := s.users.CreateUser(ctx, login, string(hash))
+	if err != nil {
+		if errors.Is(err, repository.ErrUserAlreadyExists) {
+			return model.User{}, ErrLoginTaken
+		}
+
+		return model.User{}, err
+	}
+
+	return user, nil
 }
 
-func (s *AuthService) Login(login string, password string) (model.User, error) {
+func (s *AuthService) Login(ctx context.Context, login string, password string) (model.User, error) {
 	if login == "" || password == "" {
 		return model.User{}, ErrInvalidAuthData
 	}
 
-	user, err := s.users.GetUserByLogin(login)
+	user, err := s.users.GetUserByLogin(ctx, login)
 	if err != nil {
-		return model.User{}, ErrInvalidLogin
+		if errors.Is(err, repository.ErrUserNotFound) {
+			return model.User{}, ErrInvalidLogin
+		}
+
+		return model.User{}, err
 	}
 
 	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password)); err != nil {
@@ -60,10 +75,19 @@ func (s *AuthService) Login(login string, password string) (model.User, error) {
 	return user, nil
 }
 
-func (s *AuthService) GetUserByID(userID int64) (model.User, error) {
+func (s *AuthService) GetUserByID(ctx context.Context, userID int64) (model.User, error) {
 	if userID <= 0 {
 		return model.User{}, ErrInvalidLogin
 	}
 
-	return s.users.GetUserByID(userID)
+	user, err := s.users.GetUserByID(ctx, userID)
+	if err != nil {
+		if errors.Is(err, repository.ErrUserNotFound) {
+			return model.User{}, ErrInvalidLogin
+		}
+
+		return model.User{}, err
+	}
+
+	return user, nil
 }

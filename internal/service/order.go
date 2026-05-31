@@ -1,10 +1,12 @@
 package service
 
 import (
+	"context"
 	"errors"
 
 	"github.com/sastromikus/pip_diploma_gofermarket/internal/luhn"
 	"github.com/sastromikus/pip_diploma_gofermarket/internal/model"
+	"github.com/sastromikus/pip_diploma_gofermarket/internal/repository"
 )
 
 var (
@@ -14,11 +16,11 @@ var (
 )
 
 type OrderRepository interface {
-	CreateOrder(userID int64, number string) (model.Order, error)
-	GetOrdersByUserID(userID int64) ([]model.Order, error)
+	CreateOrder(ctx context.Context, userID int64, number string) (model.Order, error)
+	GetOrdersByUserID(ctx context.Context, userID int64) ([]model.Order, error)
 
-	GetPendingOrders(limit int) ([]model.Order, error)
-	UpdateOrderAccrual(number string, status string, accrual *float64) error
+	GetPendingOrders(ctx context.Context, limit int) ([]model.Order, error)
+	UpdateOrderAccrual(ctx context.Context, number string, status string, accrual *float64) error
 }
 
 type OrderService struct {
@@ -31,14 +33,26 @@ func NewOrderService(orders OrderRepository) *OrderService {
 	}
 }
 
-func (s *OrderService) UploadOrder(userID int64, number string) (model.Order, error) {
+func (s *OrderService) UploadOrder(ctx context.Context, userID int64, number string) (model.Order, error) {
 	if !luhn.Valid(number) {
 		return model.Order{}, ErrInvalidOrderNumber
 	}
 
-	return s.orders.CreateOrder(userID, number)
+	order, err := s.orders.CreateOrder(ctx, userID, number)
+	if err != nil {
+		switch {
+		case errors.Is(err, repository.ErrOrderUploadedByUser):
+			return model.Order{}, ErrOrderUploadedByUser
+		case errors.Is(err, repository.ErrOrderUploadedByOther):
+			return model.Order{}, ErrOrderUploadedByOther
+		default:
+			return model.Order{}, err
+		}
+	}
+
+	return order, nil
 }
 
-func (s *OrderService) GetOrders(userID int64) ([]model.Order, error) {
-	return s.orders.GetOrdersByUserID(userID)
+func (s *OrderService) GetOrders(ctx context.Context, userID int64) ([]model.Order, error) {
+	return s.orders.GetOrdersByUserID(ctx, userID)
 }

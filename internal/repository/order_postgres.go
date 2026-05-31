@@ -6,7 +6,6 @@ import (
 	"errors"
 
 	"github.com/sastromikus/pip_diploma_gofermarket/internal/model"
-	"github.com/sastromikus/pip_diploma_gofermarket/internal/service"
 )
 
 type PostgresOrderRepository struct {
@@ -19,7 +18,7 @@ func NewPostgresOrderRepository(db *sql.DB) *PostgresOrderRepository {
 	}
 }
 
-func (r *PostgresOrderRepository) CreateOrder(userID int64, number string) (model.Order, error) {
+func (r *PostgresOrderRepository) CreateOrder(ctx context.Context, userID int64, number string) (model.Order, error) {
 	query := `
 		INSERT INTO orders (user_id, number, status)
 		VALUES ($1, $2, $3)
@@ -29,7 +28,7 @@ func (r *PostgresOrderRepository) CreateOrder(userID int64, number string) (mode
 	var order model.Order
 
 	err := r.db.QueryRowContext(
-		context.Background(),
+		ctx,
 		query,
 		userID,
 		number,
@@ -51,19 +50,19 @@ func (r *PostgresOrderRepository) CreateOrder(userID int64, number string) (mode
 		return model.Order{}, err
 	}
 
-	existingOrder, err := r.GetOrderByNumber(number)
+	existingOrder, err := r.GetOrderByNumber(ctx, number)
 	if err != nil {
 		return model.Order{}, err
 	}
 
 	if existingOrder.UserID == userID {
-		return model.Order{}, service.ErrOrderUploadedByUser
+		return model.Order{}, ErrOrderUploadedByUser
 	}
 
-	return model.Order{}, service.ErrOrderUploadedByOther
+	return model.Order{}, ErrOrderUploadedByOther
 }
 
-func (r *PostgresOrderRepository) GetOrderByNumber(number string) (model.Order, error) {
+func (r *PostgresOrderRepository) GetOrderByNumber(ctx context.Context, number string) (model.Order, error) {
 	query := `
 		SELECT id, user_id, number, status, accrual, uploaded_at
 		FROM orders
@@ -73,7 +72,7 @@ func (r *PostgresOrderRepository) GetOrderByNumber(number string) (model.Order, 
 	var order model.Order
 
 	err := r.db.QueryRowContext(
-		context.Background(),
+		ctx,
 		query,
 		number,
 	).Scan(
@@ -87,7 +86,7 @@ func (r *PostgresOrderRepository) GetOrderByNumber(number string) (model.Order, 
 
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return model.Order{}, sql.ErrNoRows
+			return model.Order{}, ErrOrderNotFound
 		}
 
 		return model.Order{}, err
@@ -96,7 +95,7 @@ func (r *PostgresOrderRepository) GetOrderByNumber(number string) (model.Order, 
 	return order, nil
 }
 
-func (r *PostgresOrderRepository) GetOrdersByUserID(userID int64) ([]model.Order, error) {
+func (r *PostgresOrderRepository) GetOrdersByUserID(ctx context.Context, userID int64) ([]model.Order, error) {
 	query := `
 		SELECT id, user_id, number, status, accrual, uploaded_at
 		FROM orders
@@ -104,7 +103,7 @@ func (r *PostgresOrderRepository) GetOrdersByUserID(userID int64) ([]model.Order
 		ORDER BY uploaded_at DESC
 	`
 
-	rows, err := r.db.QueryContext(context.Background(), query, userID)
+	rows, err := r.db.QueryContext(ctx, query, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -137,7 +136,7 @@ func (r *PostgresOrderRepository) GetOrdersByUserID(userID int64) ([]model.Order
 	return orders, nil
 }
 
-func (r *PostgresOrderRepository) GetPendingOrders(limit int) ([]model.Order, error) {
+func (r *PostgresOrderRepository) GetPendingOrders(ctx context.Context, limit int) ([]model.Order, error) {
 	query := `
 		SELECT id, user_id, number, status, accrual, uploaded_at
 		FROM orders
@@ -147,7 +146,7 @@ func (r *PostgresOrderRepository) GetPendingOrders(limit int) ([]model.Order, er
 	`
 
 	rows, err := r.db.QueryContext(
-		context.Background(),
+		ctx,
 		query,
 		model.OrderStatusNew,
 		model.OrderStatusProcessing,
@@ -184,7 +183,7 @@ func (r *PostgresOrderRepository) GetPendingOrders(limit int) ([]model.Order, er
 	return orders, nil
 }
 
-func (r *PostgresOrderRepository) UpdateOrderAccrual(number string, status string, accrual *float64) error {
+func (r *PostgresOrderRepository) UpdateOrderAccrual(ctx context.Context, number string, status string, accrual *float64) error {
 	var accrualValue any
 	if accrual != nil {
 		accrualValue = *accrual
@@ -203,7 +202,7 @@ func (r *PostgresOrderRepository) UpdateOrderAccrual(number string, status strin
 	`
 
 	_, err := r.db.ExecContext(
-		context.Background(),
+		ctx,
 		query,
 		status,
 		model.OrderStatusProcessed,

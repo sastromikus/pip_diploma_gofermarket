@@ -1,10 +1,12 @@
 package accrual
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -37,10 +39,15 @@ func NewClient(baseURL string) *Client {
 	}
 }
 
-func (c *Client) GetOrder(number string) (model.AccrualResponse, time.Duration, error) {
+func (c *Client) GetOrder(ctx context.Context, number string) (model.AccrualResponse, time.Duration, error) {
 	url := fmt.Sprintf("%s/api/orders/%s", c.baseURL, number)
 
-	resp, err := c.httpClient.Get(url)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return model.AccrualResponse{}, 0, err
+	}
+
+	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return model.AccrualResponse{}, 0, err
 	}
@@ -68,13 +75,26 @@ func (c *Client) GetOrder(number string) (model.AccrualResponse, time.Duration, 
 }
 
 func parseRetryAfter(value string) time.Duration {
+	value = strings.TrimSpace(value)
 	if value == "" {
 		return time.Second
 	}
 
-	seconds, err := time.ParseDuration(value + "s")
+	seconds, err := strconv.Atoi(value)
 	if err == nil {
-		return seconds
+		if seconds <= 0 {
+			return time.Second
+		}
+
+		return time.Duration(seconds) * time.Second
+	}
+
+	when, err := http.ParseTime(value)
+	if err == nil {
+		duration := time.Until(when)
+		if duration > 0 {
+			return duration
+		}
 	}
 
 	return time.Second

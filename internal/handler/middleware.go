@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"net/http"
 
 	"github.com/sastromikus/pip_diploma_gofermarket/internal/auth"
@@ -8,7 +9,7 @@ import (
 )
 
 type UserChecker interface {
-	GetUserByID(userID int64) (model.User, error)
+	GetUserByID(ctx context.Context, userID int64) (model.User, error)
 }
 
 func AuthMiddleware(authManager *auth.Manager, users UserChecker) func(http.Handler) http.Handler {
@@ -26,7 +27,7 @@ func AuthMiddleware(authManager *auth.Manager, users UserChecker) func(http.Hand
 				return
 			}
 
-			if _, err := users.GetUserByID(userID); err != nil {
+			if _, err := users.GetUserByID(r.Context(), userID); err != nil {
 				w.WriteHeader(http.StatusUnauthorized)
 				return
 			}
