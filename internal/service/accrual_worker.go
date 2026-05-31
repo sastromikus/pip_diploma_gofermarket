@@ -228,9 +228,7 @@ func (w *AccrualWorker) setRateLimit(retryAfter time.Duration) {
 
 func mapAccrualStatus(status string) string {
 	switch status {
-	case "REGISTERED":
-		return model.OrderStatusNew
-	case model.OrderStatusProcessing:
+	case "REGISTERED", model.OrderStatusProcessing:
 		return model.OrderStatusProcessing
 	case model.OrderStatusInvalid:
 		return model.OrderStatusInvalid
