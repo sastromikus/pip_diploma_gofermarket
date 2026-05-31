@@ -3,12 +3,18 @@ package service
 import (
 	"context"
 	"errors"
-	"log"
+	"log/slog"
 	"sync"
 	"time"
 
 	"github.com/sastromikus/pip_diploma_gofermarket/internal/accrual"
 	"github.com/sastromikus/pip_diploma_gofermarket/internal/model"
+)
+
+const (
+	defaultAccrualPollInterval = time.Second
+	defaultAccrualBatchSize    = 10
+	defaultAccrualWorkerCount  = 4
 )
 
 type AccrualClient interface {
@@ -18,19 +24,30 @@ type AccrualClient interface {
 type AccrualWorker struct {
 	orders OrderRepository
 	client AccrualClient
+	logger *slog.Logger
 
 	pollInterval time.Duration
 	batchSize    int
+	workerCount  int
+
+	rateLimitMu    sync.Mutex
+	rateLimitUntil time.Time
 
 	wg sync.WaitGroup
 }
 
-func NewAccrualWorker(orders OrderRepository, client AccrualClient) *AccrualWorker {
+func NewAccrualWorker(orders OrderRepository, client AccrualClient, logger *slog.Logger) *AccrualWorker {
+	if logger == nil {
+		logger = slog.Default()
+	}
+
 	return &AccrualWorker{
 		orders:       orders,
 		client:       client,
-		pollInterval: time.Second,
-		batchSize:    10,
+		logger:       logger,
+		pollInterval: defaultAccrualPollInterval,
+		batchSize:    defaultAccrualBatchSize,
+		workerCount:  defaultAccrualWorkerCount,
 	}
 }
 
@@ -63,59 +80,149 @@ func (w *AccrualWorker) run(ctx context.Context) {
 func (w *AccrualWorker) processBatch(ctx context.Context) {
 	orders, err := w.orders.GetPendingOrders(ctx, w.batchSize)
 	if err != nil {
-		log.Printf("accrual worker: get pending orders: %v", err)
+		w.logger.Error("get pending orders", "error", err)
 		return
+	}
+
+	if len(orders) == 0 {
+		return
+	}
+
+	jobs := make(chan model.Order)
+
+	workerCount := w.workerCount
+	if workerCount <= 0 {
+		workerCount = 1
+	}
+	if workerCount > len(orders) {
+		workerCount = len(orders)
+	}
+
+	var batchWG sync.WaitGroup
+	batchWG.Add(workerCount)
+
+	for i := 0; i < workerCount; i++ {
+		go func(workerID int) {
+			defer batchWG.Done()
+
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case order, ok := <-jobs:
+					if !ok {
+						return
+					}
+
+					w.processOrder(ctx, workerID, order)
+				}
+			}
+		}(i + 1)
 	}
 
 	for _, order := range orders {
 		select {
 		case <-ctx.Done():
+			close(jobs)
+			batchWG.Wait()
 			return
+		case jobs <- order:
+		}
+	}
+
+	close(jobs)
+	batchWG.Wait()
+}
+
+func (w *AccrualWorker) processOrder(ctx context.Context, workerID int, order model.Order) {
+	if err := w.waitRateLimit(ctx); err != nil {
+		return
+	}
+
+	result, retryAfter, err := w.client.GetOrder(ctx, order.Number)
+	if err != nil {
+		switch {
+		case errors.Is(err, accrual.ErrOrderNotRegistered):
+			return
+
+		case errors.Is(err, accrual.ErrTooManyRequests):
+			w.setRateLimit(retryAfter)
+			w.logger.Warn(
+				"accrual rate limit reached",
+				"worker", workerID,
+				"retry_after", retryAfter,
+			)
+			return
+
 		default:
+			w.logger.Error(
+				"get accrual order",
+				"worker", workerID,
+				"order", order.Number,
+				"error", err,
+			)
+			return
+		}
+	}
+
+	status := mapAccrualStatus(result.Status)
+	if status == "" {
+		w.logger.Warn(
+			"unknown accrual status",
+			"worker", workerID,
+			"order", order.Number,
+			"status", result.Status,
+		)
+		return
+	}
+
+	if err := w.orders.UpdateOrderAccrual(ctx, order.Number, status, result.Accrual); err != nil {
+		w.logger.Error(
+			"update order accrual",
+			"worker", workerID,
+			"order", order.Number,
+			"error", err,
+		)
+	}
+}
+
+func (w *AccrualWorker) waitRateLimit(ctx context.Context) error {
+	for {
+		w.rateLimitMu.Lock()
+		wait := time.Until(w.rateLimitUntil)
+		w.rateLimitMu.Unlock()
+
+		if wait <= 0 {
+			return nil
 		}
 
-		result, retryAfter, err := w.client.GetOrder(ctx, order.Number)
-
-		if err != nil {
-			switch {
-			case errors.Is(err, accrual.ErrOrderNotRegistered):
-				continue
-
-			case errors.Is(err, accrual.ErrTooManyRequests):
-				if retryAfter <= 0 {
-					retryAfter = time.Second
-				}
-
-				log.Printf("accrual worker: too many requests, retry after %s", retryAfter)
-
-				timer := time.NewTimer(retryAfter)
+		timer := time.NewTimer(wait)
+		select {
+		case <-ctx.Done():
+			if !timer.Stop() {
 				select {
-				case <-ctx.Done():
-					if !timer.Stop() {
-						select {
-						case <-timer.C:
-						default:
-						}
-					}
-					return
 				case <-timer.C:
-					return
+				default:
 				}
-
-			default:
-				log.Printf("accrual worker: get order %s: %v", order.Number, err)
-				continue
 			}
+			return ctx.Err()
+		case <-timer.C:
 		}
+	}
+}
 
-		status := mapAccrualStatus(result.Status)
-		if status == "" {
-			continue
-		}
+func (w *AccrualWorker) setRateLimit(retryAfter time.Duration) {
+	if retryAfter <= 0 {
+		retryAfter = time.Second
+	}
 
-		if err := w.orders.UpdateOrderAccrual(ctx, order.Number, status, result.Accrual); err != nil {
-			log.Printf("accrual worker: update order %s: %v", order.Number, err)
-		}
+	until := time.Now().Add(retryAfter)
+
+	w.rateLimitMu.Lock()
+	defer w.rateLimitMu.Unlock()
+
+	if until.After(w.rateLimitUntil) {
+		w.rateLimitUntil = until
 	}
 }
 

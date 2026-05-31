@@ -2,7 +2,7 @@ package main
 
 import (
 	"context"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -18,19 +18,24 @@ import (
 )
 
 func main() {
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+
 	cfg := config.Load()
 
 	if cfg.DatabaseURI == "" {
-		log.Fatal("DATABASE_URI is empty")
+		logger.Error("DATABASE_URI is empty")
+		os.Exit(1)
 	}
 
 	if err := repository.RunMigrations(cfg.DatabaseURI, "migrations"); err != nil {
-		log.Fatalf("migrations failed: %v", err)
+		logger.Error("migrations failed", "error", err)
+		os.Exit(1)
 	}
 
 	db, err := repository.NewPostgresDB(cfg.DatabaseURI)
 	if err != nil {
-		log.Fatalf("database connection failed: %v", err)
+		logger.Error("database connection failed", "error", err)
+		os.Exit(1)
 	}
 	defer db.Close()
 
@@ -48,7 +53,11 @@ func main() {
 
 	if cfg.AccrualSystemAddress != "" {
 		accrualClient := accrual.NewClient(cfg.AccrualSystemAddress)
-		accrualWorker = service.NewAccrualWorker(orderRepo, accrualClient)
+		accrualWorker = service.NewAccrualWorker(
+			orderRepo,
+			accrualClient,
+			logger.With("component", "accrual_worker"),
+		)
 		accrualWorker.Start(workerCtx)
 	}
 
@@ -63,15 +72,31 @@ func main() {
 	serverCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	serverErr := make(chan error, 1)
 	go func() {
-		log.Printf("starting server on %s", cfg.RunAddress)
+		logger.Info("starting server", "addr", cfg.RunAddress)
 
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatal(err)
+			serverErr <- err
+			return
 		}
+
+		serverErr <- nil
 	}()
 
-	<-serverCtx.Done()
+	select {
+	case <-serverCtx.Done():
+	case err := <-serverErr:
+		if err != nil {
+			logger.Error("server failed", "error", err)
+			workerCancel()
+			if accrualWorker != nil {
+				accrualWorker.Wait()
+			}
+			os.Exit(1)
+		}
+	}
+
 	workerCancel()
 
 	if accrualWorker != nil {
@@ -82,8 +107,8 @@ func main() {
 	defer cancel()
 
 	if err := srv.Shutdown(shutdownCtx); err != nil {
-		log.Printf("server shutdown failed: %v", err)
+		logger.Error("server shutdown failed", "error", err)
 	}
 
-	log.Println("server stopped")
+	logger.Info("server stopped")
 }
