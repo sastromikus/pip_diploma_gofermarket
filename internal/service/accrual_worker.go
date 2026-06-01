@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log/slog"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/sastromikus/pip_diploma_gofermarket/internal/accrual"
@@ -30,8 +31,7 @@ type AccrualWorker struct {
 	batchSize    int
 	workerCount  int
 
-	rateLimitMu    sync.Mutex
-	rateLimitUntil time.Time
+	rateLimitUntil atomic.Int64
 
 	wg sync.WaitGroup
 }
@@ -106,6 +106,10 @@ func (w *AccrualWorker) processBatch(ctx context.Context) {
 			defer batchWG.Done()
 
 			for {
+				if err := w.waitRateLimit(ctx); err != nil {
+					return
+				}
+
 				select {
 				case <-ctx.Done():
 					return
@@ -135,10 +139,6 @@ func (w *AccrualWorker) processBatch(ctx context.Context) {
 }
 
 func (w *AccrualWorker) processOrder(ctx context.Context, workerID int, order model.Order) {
-	if err := w.waitRateLimit(ctx); err != nil {
-		return
-	}
-
 	result, retryAfter, err := w.client.GetOrder(ctx, order.Number)
 	if err != nil {
 		switch {
@@ -188,10 +188,8 @@ func (w *AccrualWorker) processOrder(ctx context.Context, workerID int, order mo
 
 func (w *AccrualWorker) waitRateLimit(ctx context.Context) error {
 	for {
-		w.rateLimitMu.Lock()
-		wait := time.Until(w.rateLimitUntil)
-		w.rateLimitMu.Unlock()
-
+		until := time.Unix(0, w.rateLimitUntil.Load())
+		wait := time.Until(until)
 		if wait <= 0 {
 			return nil
 		}
@@ -216,13 +214,17 @@ func (w *AccrualWorker) setRateLimit(retryAfter time.Duration) {
 		retryAfter = time.Second
 	}
 
-	until := time.Now().Add(retryAfter)
+	until := time.Now().Add(retryAfter).UnixNano()
 
-	w.rateLimitMu.Lock()
-	defer w.rateLimitMu.Unlock()
+	for {
+		current := w.rateLimitUntil.Load()
+		if until <= current {
+			return
+		}
 
-	if until.After(w.rateLimitUntil) {
-		w.rateLimitUntil = until
+		if w.rateLimitUntil.CompareAndSwap(current, until) {
+			return
+		}
 	}
 }
 
