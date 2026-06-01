@@ -1,0 +1,272 @@
+package handler
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"io"
+	"net/http"
+	"strings"
+	"time"
+
+	"github.com/sastromikus/pip_diploma_gofermarket/internal/auth"
+	"github.com/sastromikus/pip_diploma_gofermarket/internal/model"
+	"github.com/sastromikus/pip_diploma_gofermarket/internal/service"
+)
+
+type AuthService interface {
+	Register(ctx context.Context, login string, password string) (model.User, error)
+	Login(ctx context.Context, login string, password string) (model.User, error)
+	GetUserByID(ctx context.Context, userID int64) (model.User, error)
+}
+
+type Handler struct {
+	auth        AuthService
+	orders      OrderService
+	balance     BalanceService
+	authManager *auth.Manager
+}
+
+type OrderService interface {
+	UploadOrder(ctx context.Context, userID int64, number string) (model.Order, error)
+	GetOrders(ctx context.Context, userID int64) ([]model.Order, error)
+}
+
+type BalanceService interface {
+	GetBalance(ctx context.Context, userID int64) (model.Balance, error)
+	Withdraw(ctx context.Context, userID int64, order string, sum float64) error
+	GetWithdrawals(ctx context.Context, userID int64) ([]model.Withdrawal, error)
+}
+
+const authCookieName = "user_id"
+
+func NewHandler(authService AuthService, orders OrderService, balance BalanceService, authManager *auth.Manager) *Handler {
+	return &Handler{
+		auth:        authService,
+		orders:      orders,
+		balance:     balance,
+		authManager: authManager,
+	}
+}
+
+func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
+	if !hasContentType(r, "application/json") {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	var req model.AuthRequest
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	user, err := h.auth.Register(r.Context(), req.Login, req.Password)
+	if err != nil {
+		switch {
+		case errors.Is(err, service.ErrInvalidAuthData):
+			w.WriteHeader(http.StatusBadRequest)
+		case errors.Is(err, service.ErrLoginTaken):
+			w.WriteHeader(http.StatusConflict)
+		default:
+			w.WriteHeader(http.StatusInternalServerError)
+		}
+		return
+	}
+
+	h.setAuthCookie(w, user.ID)
+	w.WriteHeader(http.StatusOK)
+}
+
+func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
+	if !hasContentType(r, "application/json") {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	var req model.AuthRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	user, err := h.auth.Login(r.Context(), req.Login, req.Password)
+	if err != nil {
+		switch {
+		case errors.Is(err, service.ErrInvalidAuthData):
+			w.WriteHeader(http.StatusBadRequest)
+		case errors.Is(err, service.ErrInvalidLogin):
+			w.WriteHeader(http.StatusUnauthorized)
+		default:
+			w.WriteHeader(http.StatusInternalServerError)
+		}
+		return
+	}
+
+	h.setAuthCookie(w, user.ID)
+	w.WriteHeader(http.StatusOK)
+}
+
+func (h *Handler) UploadOrder(w http.ResponseWriter, r *http.Request) {
+	userID, err := userIDFromContext(r.Context())
+	if err != nil {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+
+	if !hasContentType(r, "text/plain") {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	number := strings.TrimSpace(string(body))
+	if number == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	_, err = h.orders.UploadOrder(r.Context(), userID, number)
+	if err != nil {
+		switch {
+		case errors.Is(err, service.ErrInvalidOrderNumber):
+			w.WriteHeader(http.StatusUnprocessableEntity)
+		case errors.Is(err, service.ErrOrderUploadedByUser):
+			w.WriteHeader(http.StatusOK)
+		case errors.Is(err, service.ErrOrderUploadedByOther):
+			w.WriteHeader(http.StatusConflict)
+		default:
+			w.WriteHeader(http.StatusInternalServerError)
+		}
+		return
+	}
+
+	w.WriteHeader(http.StatusAccepted)
+}
+
+func (h *Handler) GetOrders(w http.ResponseWriter, r *http.Request) {
+	userID, err := userIDFromContext(r.Context())
+	if err != nil {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+
+	orders, err := h.orders.GetOrders(r.Context(), userID)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	if len(orders) == 0 {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
+	response := make([]model.OrderResponse, 0, len(orders))
+	for _, order := range orders {
+		response = append(response, model.OrderResponse{
+			Number:     order.Number,
+			Status:     order.Status,
+			Accrual:    order.Accrual,
+			UploadedAt: order.UploadedAt.Format(time.RFC3339),
+		})
+	}
+
+	writeJSON(w, http.StatusOK, response)
+}
+
+func (h *Handler) GetBalance(w http.ResponseWriter, r *http.Request) {
+	userID, err := userIDFromContext(r.Context())
+	if err != nil {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+
+	balance, err := h.balance.GetBalance(r.Context(), userID)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, balance)
+}
+
+func (h *Handler) Withdraw(w http.ResponseWriter, r *http.Request) {
+	userID, err := userIDFromContext(r.Context())
+	if err != nil {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+
+	if !hasContentType(r, "application/json") {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	var req model.WithdrawRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	if err := h.balance.Withdraw(r.Context(), userID, req.Order, req.Sum); err != nil {
+		switch {
+		case errors.Is(err, service.ErrInvalidWithdrawOrder):
+			w.WriteHeader(http.StatusUnprocessableEntity)
+		case errors.Is(err, service.ErrInvalidWithdrawSum):
+			w.WriteHeader(http.StatusBadRequest)
+		case errors.Is(err, service.ErrInsufficientFunds):
+			w.WriteHeader(http.StatusPaymentRequired)
+		default:
+			w.WriteHeader(http.StatusInternalServerError)
+		}
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+}
+
+func (h *Handler) GetWithdrawals(w http.ResponseWriter, r *http.Request) {
+	userID, err := userIDFromContext(r.Context())
+	if err != nil {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+
+	withdrawals, err := h.balance.GetWithdrawals(r.Context(), userID)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	if len(withdrawals) == 0 {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
+	response := make([]model.WithdrawalResponse, 0, len(withdrawals))
+	for _, withdrawal := range withdrawals {
+		response = append(response, model.WithdrawalResponse{
+			Order:       withdrawal.Order,
+			Sum:         withdrawal.Sum,
+			ProcessedAt: withdrawal.ProcessedAt.Format(time.RFC3339),
+		})
+	}
+
+	writeJSON(w, http.StatusOK, response)
+}
+
+func (h *Handler) setAuthCookie(w http.ResponseWriter, userID int64) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     authCookieName,
+		Value:    h.authManager.BuildToken(userID),
+		Path:     "/",
+		HttpOnly: true,
+	})
+}

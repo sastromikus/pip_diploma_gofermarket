@@ -5,19 +5,47 @@
 *.so
 *.dylib
 
-# Test binary, built with `go test -c`
+# Test binaries
 *.test
 
-# Output of the go coverage tool, specifically when used with LiteIDE
+# Coverage / profiling
 *.out
+coverage.*
+*.prof
+*.pprof
 
-# Binaries
-cmd/gophermart/main
-cmd/gophermart/gophermart
-
-# Dependency directories (remove the comment below to include it)
+# Go workspace / vendoring
 vendor/
 
-# IDEs directories
-.idea
-.vscode
+# Built project binaries
+gophermart
+gophermart.exe
+accrual
+accrual.exe
+
+cmd/gophermart/gophermart
+cmd/gophermart/gophermart.exe
+cmd/gophermart/main
+cmd/gophermart/main.exe
+
+cmd/accrual/accrual
+cmd/accrual/accrual.exe
+cmd/accrual/accrual_windows_amd64.exe
+cmd/accrual/accrual_linux_amd64
+
+# Test artifacts
+test.*
+*.log
+
+# Local env files
+.env
+.env.*
+*.local
+
+# IDEs
+.idea/
+.vscode/
+
+# OS files
+.DS_Store
+Thumbs.db
